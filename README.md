@@ -11,9 +11,9 @@
 
 ## 🌊 The Vision
 
-Finding relevant research papers in 2026 is an exercise in managing noise. Between ArXiv, Google Scholar, and Semantic Scholar, researchers are forced to navigate fragmented interfaces and repetitive results.
+Finding relevant research papers in 2026 is an exercise in managing noise. Between ArXiv, Google Scholar, and Semantic Scholar, researchers are forced to navigate fragmented interfaces and repetitive results. I used this opportunity to leverage almost free resources on creating an agent that does the job as I would like.
 
-The **Paper Search Agent** is a unified ecosystem designed to act as your personal research concierge. By combining **Local AI (Ollama)** for intent extraction, **n8n** for multi-threaded orchestration, and a **FastAPI/SQLite** stack for permanent memory, it delivers a high-resolution window into the latest scientific breakthroughs.
+The **Paper Search Agent** is a unified ecosystem designed to act as a personal research assistant. By combining **Local AI (Ollama)** for intent extraction, **n8n** for multi-threaded orchestration, and a **FastAPI/SQLite** stack for permanent memory, it delivers a high-resolution window into the latest scientific breakthroughs. At the same time, everything is limited to your local PC.
 
 ---
 
