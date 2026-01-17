@@ -1,137 +1,75 @@
-# Paper Search Agent
+# 🔬 Paper Search Agent
 
-A local, privacy-focused research paper search agent built with n8n, Ollama, and SQLite. This agent searches across multiple academic sources (ArXiv, Google Scholar, Semantic Scholar, Tavily) and ranks results by relevance.
+A powerful, high-performance research paper search agent that connects **ArXiv**, **Google Scholar**, **Semantic Scholar**, and **Tavily** into a single neural pipeline. Built with **n8n**, **FastAPI**, **Streamlit**, and **Ollama**.
 
-## Features
+![Neural Pipeline](pipeline.png)
 
-- 🔍 **Multi-source search**: Searches ArXiv, Google Scholar (via SerpAPI), Semantic Scholar, and Tavily simultaneously
-- 🤖 **Local LLM**: Uses Ollama with qwen3:4b model for query extraction
-- 📊 **Smart ranking**: Combines content similarity and citation counts for relevance scoring
-- 🔄 **Deduplication**: Automatically removes duplicate papers across sources
-- 📅 **Time-aware**: Detects and handles year constraints in queries
-- 💾 **Local-first**: All processing happens locally - no cloud dependencies
+## 🌟 Key Features
 
-## Prerequisites
+-   🔍 **Multi-Source Intelligence**: Simultaneously queries ArXiv, Google Scholar (via SerpAPI), Semantic Scholar, and Tavily.
+-   🧠 **Local LLM Keywords**: Uses Ollama (`qwen3:4b`) to translate natural language queries into precise search keywords.
+-   ⚖️ **Smart Relevance Scoring**: Papers are ranked using a hybrid score of content similarity, citation impact, and year matches.
+-   🔄 **Auto-Deduplication**: Never see the same paper twice, even if found across multiple sources.
+-   📜 **Research History**: Every search is logged locally in a SQLite database via a FastAPI backend.
+-   🎨 **Premium UI**: A sleek, modern Streamlit interface with high-resolution card views and persistence.
 
-Before setting up, ensure you have:
+---
 
-1. **n8n** installed and running locally
-   - Download from [n8n.io](https://n8n.io/)
-   - Or install via npm: `npm install n8n -g`
-   - Run: `n8n start`
+## 🛠️ Components of the n8n Workflow
 
-2. **Ollama** installed and running locally
-   - Download from [ollama.ai](https://ollama.ai/)
-   - Pull the model: `ollama pull qwen3:4b`
-   - Ensure Ollama is running on `http://127.0.0.1:11434`
+The heart of the system is the **n8n orchestrator**, which manages the data flow through several specialized stages:
 
-3. **API Keys** (for external services):
-   - SerpAPI key (for Google Scholar search)
-   - Tavily API key (for web search)
-   - Semantic Scholar API key (optional but recommended)
+1.  **n8n link (Webhook)**: The entry point that receives queries from the Streamlit app.
+2.  **Detect time intent**: A logic node that identifies if you asked for a specific year (e.g., "in 2025") or relative time ("latest").
+3.  **Build prompt & Ollama**: Prepares the neural instruction and calls your local Ollama model to generate clean search keywords.
+4.  **Parallel Search Cluster**:
+    *   **ArXiv**: Direct XML query for physics, computer science, and math.
+    *   **SerpAPI**: Leverages Google Scholar for wide academic coverage.
+    *   **Tavily**: Scours the web for the absolute latest journal pre-prints.
+    *   **Semantic Scholar**: Fetches deep citation counts and abstracts.
+5.  **Merge & Score**: Aggregates all papers into a single pool and calculates their "Final Score."
+6.  **SQL_link**: Sends the final ranked results to your local FastAPI service for database storage.
 
-## Setup
+---
 
-### 1. Import the Workflow
+## 🚀 Getting Started
 
-1. Open your local n8n instance (usually `http://localhost:5678`)
-2. Click "Import from File"
-3. Select `workflow/paper-search-agent.json`
-4. The workflow will be imported with placeholder API keys
+### 1. Prerequisites
+*   **n8n Desktop/Self-hosted**: [Install here](https://n8n.io/)
+*   **Ollama**: [Install here](https://ollama.ai/) and run `ollama pull qwen3:4b`.
+*   **Python 3.10+**: For the UI and Backend.
 
-### 2. Configure API Keys
+### 2. Setup the Neural Backend (n8n)
+1.  Import `Paper Search Agent.json` into n8n.
+2.  Set the workflow to **Active**.
+3.  Ensure your API keys are configured in the `SerpAPI` and `Tavily` nodes.
 
-See [API_KEYS.md](API_KEYS.md) for detailed instructions on obtaining and configuring API keys.
+### 3. Launching the Local Services
 
-In the imported workflow, update these nodes with your API keys:
+Open two terminals in the project folder:
 
-- **SerpAPI - Google Scholar**: Replace `YOUR_SERPAPI_KEY` in the query parameters
-- **Tavily - search**: Replace `YOUR_TAVILY_API_KEY` in the Authorization header
-- **Semantic Scholar – search**: Replace `YOUR_SEMANTIC_SCHOLAR_API_KEY` in the x-api-key header
-
-### 3. Verify Ollama Connection
-
-Ensure Ollama is running and the model is available:
-```bash
-ollama list
-# Should show qwen3:4b
-
-# Test the API
-curl http://127.0.0.1:11434/api/tags
+**Terminal A: The Memory API**
+```powershell
+pip install -r requirements.txt  # If not already installed
+uvicorn memory_api:app --reload --port 8000
 ```
 
-### 4. Activate the Workflow
-
-1. In n8n, open the "Paper Search Agent" workflow
-2. Click "Active" toggle to activate it
-3. The chat trigger will be available at the webhook URL shown
-
-## Usage
-
-### Via n8n Chat Interface
-
-1. In n8n, click on the "When chat message received" node
-2. Click "Test workflow" or use the chat interface
-3. Enter your query, e.g., "Find papers about machine learning in 2024"
-
-### Example Queries
-
-- "Find recent papers on transformer architectures"
-- "Show me papers about quantum computing from 2023"
-- "Search for research on climate change mitigation"
-
-## Workflow Architecture
-
-```
-User Query
-    ↓
-Detect Time Intent
-    ↓
-Build Prompt → Ollama (Extract Keywords)
-    ↓
-Parallel Search:
-    ├─ ArXiv
-    ├─ Google Scholar (SerpAPI)
-    ├─ Tavily
-    └─ Semantic Scholar
-    ↓
-Parse & Normalize Results
-    ↓
-Merge → Score → Deduplicate → Sort
-    ↓
-Format Output
+**Terminal B: The Streamlit UI**
+```powershell
+streamlit run app.py
 ```
 
-## Project Structure
+---
 
-```
-.
-├── workflow/
-│   └── paper-search-agent.json    # n8n workflow file (with placeholder API keys)
-├── .gitignore                      # Git ignore rules
-├── API_KEYS.md                     # API keys configuration guide
-└── README.md                       # This file
-```
+## 📖 Project Structure
 
-## Local Development
+*   `app.py`: The Premium Streamlit discovery interface.
+*   `memory_api.py`: FastAPI backend managing the SQLite database.
+*   `Paper Search Agent.json`: The full n8n workflow logic.
+*   `memory.db`: SQLite database storing your research history.
+*   `pipeline.png`: Visual architecture of the agent logic.
 
-This project is designed to run entirely locally:
+---
 
-- **n8n**: Workflow automation (local instance)
-- **Ollama**: Local LLM inference
-- **SQLite**: Local database (to be added for memory feature)
-
-## Future Enhancements
-
-- [ ] Add SQLite-based memory for search history
-- [ ] Create Streamlit web interface
-- [ ] Add paper bookmarking/favorites
-- [ ] Implement user preferences storage
-
-## License
-
-MIT License - feel free to use and modify for your needs.
-
-## Contributing
-
-Contributions welcome! Please open an issue or submit a pull request.
+## 📜 License
+MIT License. Created by Ali Baghizadeh.
