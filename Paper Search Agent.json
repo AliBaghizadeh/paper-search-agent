@@ -3,29 +3,15 @@
   "nodes": [
     {
       "parameters": {
-        "options": {}
-      },
-      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
-      "typeVersion": 1.4,
-      "position": [
-        -1104,
-        -224
-      ],
-      "id": "40e474d7-d02f-48c6-b0b1-6d7596fa8fff",
-      "name": "When chat message received",
-      "webhookId": "9629ba84-d597-4f40-a06a-8248f6708989"
-    },
-    {
-      "parameters": {
-        "jsCode": "const user = $json.original_query;\n\nconst system = `\nYou are NOT a chat assistant.\nYou are a function.\n\nYour only job:\nExtract search keywords from the user text and return JSON.\n\nYou MUST output ONLY this format:\n{\"search_query\":\"...\"}\n\nNo greetings.\nNo explanations.\nNo emojis.\nNo markdown.\nNo extra text.\n\nIf you break the format, the system fails.\n\nExample:\nUser: Find papers about microscopy in 2025\nOutput: {\"search_query\":\"microscopy 2025\"}\n\nNow process this user message:\n`;\n\nreturn { system, user, has_year_constraint: $json.has_year_constraint, requested_year: $json.requested_year };\n\n"
+        "jsCode": "const user = String($json.original_query || '');\n\nconst system = `\nYou are NOT a chat assistant.\nYou are a function.\n\nYour only job:\nExtract search keywords from the user text and return JSON.\n\nYou MUST output ONLY this format:\n{\"search_query\":\"...\"}\n\nNo greetings.\nNo explanations.\nNo emojis.\nNo markdown.\nNo extra text.\n\nIf you break the format, the system fails.\n\nExample:\nUser: Find papers about microscopy in 2025\nOutput: {\"search_query\":\"microscopy 2025\"}\n\nNow process this user message:\n`;\n\nreturn { system, user, has_year_constraint: $json.has_year_constraint, requested_year: $json.requested_year };"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -624,
-        -224
+        -1056,
+        512
       ],
-      "id": "a77b5091-09d6-43cb-a36e-3a4a49ec9a48",
+      "id": "c8babd0f-1b53-46c7-80d2-2f2361a49af9",
       "name": "Build prompt"
     },
     {
@@ -35,29 +21,29 @@
         "sendBody": true,
         "contentType": "raw",
         "rawContentType": "Content-Type: application/json",
-        "body": "={{ JSON.stringify({\n  model: \"qwen3:4b\",\n  messages: [\n    { role: \"system\", content: $json.system },\n    { role: \"user\", content: $json.user }\n  ],\n  stream: false,\n  options: { temperature: 0 }\n}) }}",
+        "body": "={{ JSON.stringify({\n      model: \"qwen3:4b\",\n      messages: [\n        { role: \"system\", content: String($json.system) },\n        { role: \"user\", content: String($json.user) }\n      ],\n      stream: false,\n      options: { temperature: 0 }\n    }) }}",
         "options": {}
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.3,
       "position": [
-        -384,
-        -224
+        -816,
+        512
       ],
-      "id": "04c049c5-eff6-43c6-a337-8a1c8996e126",
+      "id": "f0701633-446a-4475-846a-e97e1c59e2f1",
       "name": "Ollama - extract query"
     },
     {
       "parameters": {
-        "jsCode": "const content =\n  $json.message?.content\n  ?? $json.choices?.[0]?.message?.content\n  ?? $json.response\n  ?? \"\";\n\nconst text = String(content).trim();\n\n// Try to find JSON block\nconst first = text.indexOf(\"{\");\nconst last = text.lastIndexOf(\"}\");\n\nif (first !== -1 && last !== -1 && last > first) {\n  const jsonText = text.slice(first, last + 1);\n  try {\n    const parsed = JSON.parse(jsonText);\n    if (parsed.search_query) {\n      return { search_query: String(parsed.search_query).trim() };\n    }\n  } catch (e) {\n    // fall through to fallback\n  }\n}\n\n// Fallback: crude keyword extraction\n// Remove common filler words\nconst cleaned = text\n  .toLowerCase()\n  .replace(/find|papers|about|on|in|for|please|show|me|research/g, \"\")\n  .replace(/[^a-z0-9\\s]/g, \" \")\n  .replace(/\\s+/g, \" \")\n  .trim();\n\nif (!cleaned) {\n  throw new Error(\"Could not extract keywords from model output: \" + text);\n}\n\nreturn {\n  search_query: cleaned\n};\n"
+        "jsCode": "/** \n * SURGERY: Robust JSON/Text Parser\n * Handles raw strings, pre-parsed objects, and nested n8n objects.\n */\nlet raw = $json.message?.content \n       ?? $json.choices?.[0]?.message?.content \n       ?? $json.response \n       ?? $json.content \n       ?? $json;\n\n// If n8n already parsed it as an object, just use it\nif (typeof raw === 'object' && raw !== null) {\n  if (raw.search_query) return { search_query: String(raw.search_query).trim() };\n  // If it's the whole n8n item object, try to find content\n  if (raw.json?.search_query) return { search_query: String(raw.json.search_query).trim() };\n}\n\nlet text = String(raw).trim();\n\n// Try to find JSON block in the string\nconst first = text.indexOf(\"{\");\nconst last = text.lastIndexOf(\"}\");\n\nif (first !== -1 && last !== -1 && last > first) {\n  try {\n    const parsed = JSON.parse(text.slice(first, last + 1));\n    if (parsed.search_query) return { search_query: String(parsed.search_query).trim() };\n  } catch (e) {}\n}\n\n// FALLBACK: Crude cleaning\nconst cleaned = text\n  .toLowerCase()\n  .replace(/find|papers|about|on|in|for|please|show|me|research|query|search/g, \"\")\n  .replace(/[^a-z0-9\\s]/g, \" \")\n  .replace(/\\s+/g, \" \")\n  .trim();\n\nreturn { search_query: cleaned || \"General Research\" };"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -160,
-        -224
+        -592,
+        512
       ],
-      "id": "77753ad5-cadd-4030-ad16-fc0b5b312232",
+      "id": "0fef0a08-96e1-433d-a0d7-a73a41690466",
       "name": "Parse Ollama JSON"
     },
     {
@@ -68,7 +54,7 @@
           "parameters": [
             {
               "name": "search_query",
-              "value": "={{ 'all:' + $json.search_query.replace(/\\s+/g, '+') }}"
+              "value": "={{ 'all:' + $json.search_query }}"
             },
             {
               "name": "max_results",
@@ -81,6 +67,10 @@
             {
               "name": "sortOrder",
               "value": "descending"
+            },
+            {
+              "name": "max_results",
+              "value": "40"
             }
           ]
         },
@@ -89,10 +79,10 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.3,
       "position": [
-        336,
-        -736
+        0,
+        0
       ],
-      "id": "fc181524-7ca6-4759-a87a-6862e8a788af",
+      "id": "1895184f-e26d-4a32-98f4-a06ff8477b05",
       "name": "ArXiv - query"
     },
     {
@@ -102,10 +92,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        544,
-        -736
+        208,
+        0
       ],
-      "id": "616d21d8-d3cf-404c-a17a-f1709efe12a2",
+      "id": "8ebd1c25-f614-4cbc-8ed0-d00394c6f65e",
       "name": "Parse ArXiv XML"
     },
     {
@@ -141,23 +131,23 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.3,
       "position": [
-        336,
-        -560
+        0,
+        176
       ],
-      "id": "dfbf67cb-486d-4fd0-a20d-8bdcc5469fc6",
+      "id": "fb4ad135-9567-4c5f-8dd4-aab3eacf1666",
       "name": "SerpAPI - Google Scholar"
     },
     {
       "parameters": {
-        "jsCode": "const data = $json;\n\nconst results = (data.organic_results || []).slice(0, 10).map(r => {\n  const title = r.title || \"No title\";\n  const link = r.link || r.result_id || \"\";\n  const snippet = r.snippet || \"\";\n  const pubInfo = r.publication_info?.summary || \"\";\n  const citedBy = r.inline_links?.cited_by?.total ?? null;\n\n  // Try to extract a year from publication_info.summary (best-effort)\n  const yearMatch = String(pubInfo).match(/\\b(19|20)\\d{2}\\b/);\n  const year = yearMatch ? yearMatch[0] : \"\";\n\n  return {\n    source: \"scholar\",\n    title,\n    authors_venue_year: pubInfo,\n    year,\n    cited_by: citedBy,\n    snippet: snippet.length > 240 ? snippet.slice(0, 240) + \"...\" : snippet,\n    raw_text: [title, snippet, pubInfo].filter(Boolean).join(\" \"),\n    link\n  };\n});\n\nreturn {\n  source: \"scholar\",\n  count: results.length,\n  papers: results\n};\n"
+        "jsCode": "const data = $json;\n\nconst results = (data.organic_results || []).slice(0, 10).map(r => {\n  const title = r.title || \"No title\";\n  const link = r.link || r.result_id || \"\";\n  const snippet = r.snippet || \"\";\n  const pubInfo = r.publication_info?.summary || \"\";\n  const citedBy = r.inline_links?.cited_by?.total ?? null;\n\n  // Try to extract a year from publication_info.summary (best-effort)\n  // More tolerant year extraction\n  let year = \"\";\n  const yearMatch = String(pubInfo).match(/(19|20)\\d{2}/);\n  if (yearMatch) year = yearMatch[0];\n\n  return {\n    source: \"scholar\",\n    title,\n    authors_venue_year: pubInfo,\n    year,\n    cited_by: citedBy,\n    snippet: snippet.length > 240 ? snippet.slice(0, 240) + \"...\" : snippet,\n    raw_text: [title, snippet, pubInfo].filter(Boolean).join(\" \"),\n    link\n  };\n});\n\nreturn {\n  source: \"scholar\",\n  count: results.length,\n  papers: results\n};\n"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        544,
-        -560
+        208,
+        176
       ],
-      "id": "44c3c851-a176-480c-8778-a58d95a867ef",
+      "id": "afa11278-92bf-4922-b58c-43bd9b6a93e7",
       "name": "Parse SerpAPI Scholar"
     },
     {
@@ -181,23 +171,23 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.3,
       "position": [
-        336,
-        -304
+        0,
+        432
       ],
-      "id": "d9d50bbe-9770-443b-9ddb-8f6775da2d04",
+      "id": "f1336f8b-0235-444b-bf45-40b456423257",
       "name": "Tavily - search"
     },
     {
       "parameters": {
-        "jsCode": "const data = $json;\nconst results = (data.results || []).slice(0, 10).map(r => {\n  const title = r.title || \"No title\";\n  const link = r.url || \"\";\n  const snippet = r.content || r.snippet || \"\";\n  return {\n    source: \"tavily\",\n    title,\n    snippet: snippet.length > 240 ? snippet.slice(0, 240) + \"...\" : snippet,\n    link\n  };\n});\n\nreturn {\n  source: \"tavily\",\n  count: results.length,\n  papers: results\n};"
+        "jsCode": "const data = $json;\n\nconst results = (data.results || []).slice(0, 10).map(r => {\n  const title = r.title || \"No title\";\n  const link = r.url || \"\";\n  const snippet = r.content || r.snippet || \"\";\n\n  // Extract year from snippet\n  let year = \"\";\n  const yearMatch = String(snippet).match(/(19|20)\\d{2}/);\n  if (yearMatch) year = yearMatch[0];\n\n  return {\n    source: \"tavily\",\n    title,\n    year,\n    snippet: snippet.length > 240 ? snippet.slice(0, 240) + \"...\" : snippet,\n    link\n  };\n});\n\nreturn {\n  source: \"tavily\",\n  count: results.length,\n  papers: results\n};"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        544,
-        -304
+        208,
+        432
       ],
-      "id": "5b63d132-f193-4206-ae89-7182935bbc85",
+      "id": "5e519d14-38aa-4872-8395-32524a760bf9",
       "name": "Parse Tavily"
     },
     {
@@ -205,10 +195,10 @@
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3.2,
       "position": [
-        832,
-        -144
+        496,
+        592
       ],
-      "id": "5858a9e3-c3b8-4a9e-8046-11d6a43792a4",
+      "id": "fd563803-297d-4ecf-802e-0fdea368f97f",
       "name": "Merge all results"
     },
     {
@@ -218,36 +208,36 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        560,
-        192
+        224,
+        928
       ],
-      "id": "f2745b94-67dd-48be-ae6b-c303cf5f3f85",
+      "id": "77c226ba-caaa-4f54-a4d6-348e75fe4908",
       "name": "Parse Semantic Scholar"
     },
     {
       "parameters": {
-        "jsCode": "const text = String($json.chatInput || \"\").toLowerCase();\n\nlet hasYear = false;\nlet year = null;\n\n// Match explicit years\nconst yearMatch = text.match(/\\b(19|20)\\d{2}\\b/);\nif (yearMatch) {\n  hasYear = true;\n  year = yearMatch[0];\n}\n\n// Match relative time words\nif (\n  text.includes(\"latest\") ||\n  text.includes(\"recent\") ||\n  text.includes(\"this year\") ||\n  text.includes(\"last year\")\n) {\n  hasYear = true;\n}\n\nreturn {\n  original_query: $json.chatInput,\n  has_year_constraint: hasYear,\n  requested_year: year\n};\n"
+        "jsCode": "const incoming = $json.body?.query || \"\";\n\nconst query =\n  typeof incoming === \"string\"\n    ? incoming\n    : JSON.stringify(incoming || \"\");\n\nconst text = query.toLowerCase();\n\nlet hasYear = false;\nlet year = null;\n\nconst yearMatch = text.match(/\\b(19|20)\\d{2}\\b/);\nif (yearMatch) {\n  hasYear = true;\n  year = yearMatch[0];\n}\n\nreturn {\n  original_query: query,\n  has_year_constraint: hasYear,\n  requested_year: year,\n};"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -832,
-        -224
+        -1264,
+        512
       ],
-      "id": "13d7514c-8a28-423e-ba91-e909dda6a683",
+      "id": "082fa0a1-9986-41ae-8620-0b06bd208bee",
       "name": "Detect time intent"
     },
     {
       "parameters": {
-        "jsCode": "const items = $input.all().map(i => i.json);\nconst query = $node[\"Parse Ollama JSON\"].json.search_query;\nconst hasYear = $node[\"Detect time intent\"].json.has_year_constraint;\n\nfunction simpleSimilarity(q, text) {\n  const qs = q.toLowerCase().split(/\\s+/);\n  const ts = text.toLowerCase();\n  let hit = 0;\n  for (const w of qs) {\n    if (ts.includes(w)) hit++;\n  }\n  return hit / qs.length;\n}\n\n// Flatten all papers\nlet all = [];\nfor (const it of items) {\n  if (it.papers) all.push(...it.papers);\n}\n\n// Normalize citation scale\nconst maxCite = Math.max(...all.map(p => p.cited_by || 0), 1);\n\nfor (const p of all) {\n  const contentScore = simpleSimilarity(query, p.raw_text || \"\");\n  let finalScore = contentScore;\n\n  if (!hasYear && p.cited_by !== null) {\n    const citeScore = Math.log(1 + p.cited_by) / Math.log(1 + maxCite);\n    finalScore = 0.8 * contentScore + 0.2 * citeScore;\n  }\n\n  p.content_score = contentScore;\n  p.final_score = finalScore;\n}\n\nreturn { papers: all };\n"
+        "jsCode": "const items = $input.all().map(i => i.json);\nconst query = $node[\"Parse Ollama JSON\"].json.search_query;\nconst hasYear = $node[\"Detect time intent\"].json.has_year_constraint;\nconst requestedYear = $node[\"Detect time intent\"].json.requested_year;\n\n// IMPROVED SCORING FUNCTION\nfunction smartScore(queryWords, paper, requestedYear) {\n  const title = (paper.title || \"\").toLowerCase();\n  const abstract = (paper.snippet || paper.abstract || \"\").toLowerCase();\n  \n  let titleMatches = 0;\n  let abstractMatches = 0;\n  let exactPhraseBonus = 0;\n  \n  // Check each query word\n  for (const word of queryWords) {\n    if (title.includes(word)) titleMatches++;\n    if (abstract.includes(word)) abstractMatches++;\n  }\n  \n  // Exact phrase bonus\n  const queryPhrase = queryWords.join(\" \");\n  if (title.includes(queryPhrase)) exactPhraseBonus += 0.5;\n  if (abstract.includes(queryPhrase)) exactPhraseBonus += 0.2;\n  \n  // Coverage\n  const coverage = (titleMatches + abstractMatches) / (queryWords.length * 2);\n  \n  // Weighted score\n  let weightedScore = (titleMatches * 3 + abstractMatches + exactPhraseBonus) / (queryWords.length * 4);\n  \n  // Year boost: if user requested specific year(s), boost matching papers\n  if (requestedYear && paper.year) {\n    const paperYear = String(paper.year);\n    if (paperYear.includes(requestedYear)) {\n      weightedScore *= 1.5; // 50% boost for year match\n    }\n  }\n  \n  // Minimum threshold\n  if (coverage < 0.5) return 0;\n  \n  return weightedScore;\n}\n\n// Flatten all papers\nlet all = [];\nfor (const it of items) {\n  if (it.papers) all.push(...it.papers);\n}\n\n// HARD FILTER by year if user asked for one\nif (hasYear && requestedYear) {\n  const filtered = all.filter(p => String(p.year) === String(requestedYear));\n  \n  if (filtered.length > 0) {\n    all = filtered;\n  } else {\n    // No exact year matches — keep all, but mark\n    all.forEach(p => { p.year_warning = true; });\n  }\n}\n\n// Parse query into words (remove years from keywords)\nconst queryWords = query.toLowerCase().split(/\\s+/).filter(w => w.length > 2 && !/^\\d{4}$/.test(w));\n\n// Normalize citation scale\nconst maxCite = Math.max(...all.map(p => p.cited_by || 0), 1);\n\nfor (const p of all) {\n  const contentScore = smartScore(queryWords, p, requestedYear);\n  let finalScore = contentScore;\n\n  // Blend with citations if no year constraint\n  if (!hasYear && p.cited_by !== null && contentScore > 0) {\n    const citeScore = Math.log(1 + p.cited_by) / Math.log(1 + maxCite);\n    finalScore = 0.85 * contentScore + 0.15 * citeScore;\n  }\n\n  p.content_score = contentScore;\n  p.final_score = finalScore;\n}\n\nreturn { papers: all };\n"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1072,
-        -144
+        736,
+        592
       ],
-      "id": "5bd2edfb-e7fd-4f18-a243-0032dbc77ae4",
+      "id": "c2daedfe-fdea-46a9-8c27-5eddc76d19f2",
       "name": "Score papers"
     },
     {
@@ -257,10 +247,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1280,
-        -144
+        944,
+        592
       ],
-      "id": "21837269-8e1a-46d9-bab1-ac2316b5b2ad",
+      "id": "6b8f489a-2dde-4a12-9f41-157741923376",
       "name": "Deduplicate papers"
     },
     {
@@ -270,23 +260,23 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1488,
-        -144
+        1152,
+        592
       ],
-      "id": "2e2417ff-d1bd-480b-86c7-ec665b7d63c3",
+      "id": "d0cabcb8-6176-4b9a-bff2-825f5c25929b",
       "name": "Sort by relevance"
     },
     {
       "parameters": {
-        "jsCode": "const papers = $json.papers || [];\nconst query = $node[\"Parse Ollama JSON\"].json.search_query;\n\nlet out = `Top relevant papers for: \"${query}\"\\n\\n`;\n\nif (!papers.length) {\n  return { text: \"No relevant papers found.\" };\n}\n\npapers.forEach((p, i) => {\n  out += `${i+1}) ${p.title}\\n`;\n  if (p.year) out += `Year: ${p.year} | `;\n  if (p.cited_by !== null) out += `Cited by: ${p.cited_by} | `;\n  out += `Source: ${p.source}\\n`;\n  out += `Score: ${p.final_score.toFixed(3)}\\n`;\n  if (p.snippet) out += `Abstract: ${p.snippet}\\n`;\n  if (p.link) out += `Link: ${p.link}\\n`;\n  out += `\\n`;\n});\n\nreturn { text: out };\n"
+        "jsCode": "const papers = $json.papers || [];\nconst query = $node[\"Parse Ollama JSON\"].json.search_query;\n\nlet out = `Top relevant papers for: \"${query}\"\\n\\n`;\n\nif (!papers.length) {\n  return [\n    {\n      json: {\n        text: \"No relevant papers found.\"\n      }\n    }\n  ];\n}\n\npapers.forEach((p, i) => {\n  out += `${i+1}) ${p.title}\\n`;\n  if (p.year) out += `Year: ${p.year} | `;\n  if (p.cited_by !== null) out += `Cited by: ${p.cited_by} | `;\n  out += `Source: ${p.source}\\n`;\n\n  const score =\n    typeof p.final_score === \"number\" && !isNaN(p.final_score)\n      ? p.final_score.toFixed(3)\n      : \"0.000\";\n  out += `Score: ${score}\\n`;\n\n  if (p.snippet) out += `Abstract: ${p.snippet}\\n`;\n  if (p.link) out += `Link: ${p.link}\\n`;\n  out += `\\n`;\n});\n\nreturn [\n  {\n    json: {\n      text: out\n    }\n  }\n];\n"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1728,
-        -144
+        1392,
+        592
       ],
-      "id": "c4d29d9e-d6e4-4cd0-a463-1af177be7999",
+      "id": "a00b5f82-6f74-483c-bf27-55320c940807",
       "name": "Format research output"
     },
     {
@@ -325,10 +315,10 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.3,
       "position": [
-        336,
-        192
+        0,
+        928
       ],
-      "id": "bd0aee9c-23cf-484d-aed5-0a595157e460",
+      "id": "10797d06-83a2-4bfb-b15a-30c34f37e6b2",
       "name": "Semantic Scholar – search",
       "retryOnFail": true,
       "alwaysOutputData": true,
@@ -341,27 +331,78 @@
       "type": "n8n-nodes-base.wait",
       "typeVersion": 1.1,
       "position": [
-        160,
-        96
+        -176,
+        832
       ],
-      "id": "a5d880e8-e6df-41d3-a93f-4a6a1db63d46",
+      "id": "e2413bb8-1ee2-43ef-bd30-359dff25787c",
       "name": "Semantic Search Wait",
       "webhookId": "f415c51a-dc34-4322-9c5b-12938b8ed0af"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:8000/log_search",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({\n  \"query\": $node[\"Detect time intent\"].json.original_query || \"\",\n  \"search_query\": $node[\"Parse Ollama JSON\"].json.search_query || \"\",\n  \"top_results\": ($node[\"Sort by relevance\"].json.papers || []).slice(0, 10)\n}) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1584,
+        592
+      ],
+      "id": "2f8d9711-b658-4415-9ab2-cab7434e3ee1",
+      "name": "SQL_link"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "paper-search",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -1456,
+        512
+      ],
+      "id": "c5381cd6-66d4-4ab2-af5c-868f1acd7615",
+      "name": "n8n link",
+      "webhookId": "b7289ab2-12fb-496d-ab90-631df350b81b"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1856,
+        592
+      ],
+      "id": "a531d84d-e578-4f4d-b078-18c9b6665c4a",
+      "name": "Return result"
+    },
+    {
+      "parameters": {
+        "jsCode": "const base = $json.search_query || \"\";\nconst year = $node[\"Detect time intent\"].json.requested_year;\n\nconst finalQuery = year ? `${base} ${year}` : base;\n\nreturn {\n  search_query: finalQuery\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -400,
+        512
+      ],
+      "id": "fb19aad1-77a3-474e-a1a3-473412e41bb1",
+      "name": "Apply Year Constraint"
     }
   ],
   "pinData": {},
   "connections": {
-    "When chat message received": {
-      "main": [
-        [
-          {
-            "node": "Detect time intent",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Build prompt": {
       "main": [
         [
@@ -377,22 +418,7 @@
       "main": [
         [
           {
-            "node": "SerpAPI - Google Scholar",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Tavily - search",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "ArXiv - query",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Semantic Search Wait",
+            "node": "Apply Year Constraint",
             "type": "main",
             "index": 0
           }
@@ -563,18 +589,76 @@
           }
         ]
       ]
+    },
+    "Format research output": {
+      "main": [
+        [
+          {
+            "node": "SQL_link",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "n8n link": {
+      "main": [
+        [
+          {
+            "node": "Detect time intent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SQL_link": {
+      "main": [
+        [
+          {
+            "node": "Return result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Apply Year Constraint": {
+      "main": [
+        [
+          {
+            "node": "ArXiv - query",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "SerpAPI - Google Scholar",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Tavily - search",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Semantic Search Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
-  "active": false,
+  "active": true,
   "settings": {
     "executionOrder": "v1",
     "availableInMCP": false
   },
-  "versionId": "e5a26dd6-59e7-4e01-8251-188c24a895fd",
+  "versionId": "7d694136-b447-4315-b607-a6782a149e66",
   "meta": {
-    "templateCredsSetupCompleted": true,
     "instanceId": "26d76892f2beb3802822db4bf354ffde9017164d6ee92e56e590b1c1e9440b2c"
   },
-  "id": "FaxomjZyDWcmTd0n",
+  "id": "u6ynPNKFC-v9QG081CZJb",
   "tags": []
 }
