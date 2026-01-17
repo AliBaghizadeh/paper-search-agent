@@ -90,4 +90,4 @@ The application is built to be flexible. If your n8n instance is running on a di
 
 ## 📜 License & Credits
 Licensed under the **MIT License**.
-*Architecture & Development by **Ali Baghizadeh**.*
+*Architecture & Development by **Ali Baghi Zadeh**.*
