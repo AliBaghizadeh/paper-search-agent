@@ -41,7 +41,7 @@ The heart of the system is the **n8n orchestrator**, which manages the data flow
 
 ### 2. Setup the Neural Backend (n8n)
 1.  Import `Paper Search Agent.json` into n8n.
-2.  Set the workflow to **Active**.
+2.  Set the workflow to **Active** or **Publish** in new version.
 3.  Ensure your API keys are configured in the `SerpAPI` and `Tavily` nodes.
 
 ### 3. Launching the Local Services
