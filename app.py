@@ -420,8 +420,6 @@ def main():
     # --- TAB 3: HISTORY ---
     with tab_history:
         render_history_page()
-        
-        pass # Handled above
 
     with tab_settings:
         st.header("⚙️ Engine & Config")
