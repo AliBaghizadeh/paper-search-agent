@@ -6,7 +6,7 @@
 [![Ollama](https://img.shields.io/badge/LLM-Ollama-blue.svg)](https://ollama.ai/)
 [![FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688.svg)](https://fastapi.tiangolo.com/)
 [![Streamlit](https://img.shields.io/badge/UI-Streamlit-FF4B4B.svg)](https://streamlit.io/)
-
+![App Front Page](App_front_page.png)
 ---
 
 ## 🌊 The Vision
@@ -52,7 +52,7 @@ Finally, results are deduplicated and saved to your local `memory.db`, ensuring 
 
 ### 2. Setup the Neural Backend (n8n)
 1.  Import `Paper Search Agent.json` into n8n.
-2.  Set the workflow to **Active**.
+2.  Set the workflow to **Active** or **Publish**.
 3.  Ensure your API keys are configured in the `SerpAPI` and `Tavily` nodes.
 
 ### 3. Launching the Local Services
@@ -90,4 +90,4 @@ The application is built to be flexible. If your n8n instance is running on a di
 
 ## 📜 License & Credits
 Licensed under the **MIT License**.
-*Architecture & Development by **Ali Baghizadeh**.*
+*Architecture & Development by **Ali Baghi Zadeh**.*
