@@ -59,28 +59,73 @@ def get_max_id():
     except:
         return 0
 
+def init_db():
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("CREATE TABLE IF NOT EXISTS search_history (id INTEGER PRIMARY KEY AUTOINCREMENT, query TEXT, search_query TEXT, top_results TEXT, created_at TEXT)")
+        cur.execute("CREATE TABLE IF NOT EXISTS favorites (title TEXT, link TEXT UNIQUE, added_at TEXT, paper_json TEXT)")
+        
+        # Check for missing columns to handle migrations
+        cur.execute("PRAGMA table_info(favorites)")
+        cols = [c[1] for c in cur.fetchall()]
+        
+        if "added_at" not in cols:
+            cur.execute("ALTER TABLE favorites ADD COLUMN added_at TEXT")
+        if "paper_json" not in cols:
+            cur.execute("ALTER TABLE favorites ADD COLUMN paper_json TEXT")
+            
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"DB Init Error: {e}")
+
 def get_favorites():
     try:
         conn = get_conn()
         cur = conn.cursor()
-        cur.execute("SELECT title, link, added_at FROM favorites ORDER BY added_at DESC")
+        cur.execute("SELECT title, link, added_at, paper_json FROM favorites ORDER BY added_at DESC")
         rows = cur.fetchall()
         conn.close()
-        return [{"title": r[0], "link": r[1], "added_at": r[2]} for r in rows]
-    except:
+        
+        favs = []
+        for r in rows:
+            # If we have paper_json, use it; otherwise construct from title/link
+            if len(r) > 3 and r[3]:
+                try:
+                    paper = json.loads(r[3])
+                except:
+                    paper = {"title": r[0], "link": r[1]}
+            else:
+                paper = {"title": r[0], "link": r[1]}
+            
+            paper["added_at"] = r[2]
+            favs.append(paper)
+        return favs
+    except Exception as e:
+        st.error(f"Error fetching collection: {e}")
         return []
 
-def add_to_favorites(title, link):
+def add_to_favorites(paper_data):
+    if not paper_data: return
+    title = paper_data.get('title', 'Untitled Paper')
+    link = paper_data.get('link', '#')
+    
+    # If link is just #, make it unique to avoid INSERT OR IGNORE blocking different papers with no links
+    if link == "#":
+        link = f"#{int(time.time())}_{title[:20]}"
+
     try:
         conn = get_conn()
         cur = conn.cursor()
-        cur.execute("CREATE TABLE IF NOT EXISTS favorites (title TEXT, link TEXT UNIQUE, added_at TEXT)")
-        cur.execute("INSERT OR IGNORE INTO favorites (title, link, added_at) VALUES (?, ?, ?)", 
-                    (title, link, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+        cur.execute("INSERT OR IGNORE INTO favorites (title, link, added_at, paper_json) VALUES (?, ?, ?, ?)", 
+                    (title, link, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), json.dumps(paper_data)))
         conn.commit()
         conn.close()
-    except:
-        pass
+        return True
+    except Exception as e:
+        st.error(f"Database Error: {e}")
+        return False
 
 def remove_from_favorites(link):
     try:
@@ -296,6 +341,10 @@ st.markdown("""
 
 def main():
     global CURRENT_WEBHOOK
+    
+    # Initialize DB tables
+    init_db()
+
     
     # Main Tab Navigation
     tab_search, tab_fav, tab_history, tab_settings = st.tabs([
@@ -622,32 +671,46 @@ def display_structured_results(data, query):
         with col1:
             st.markdown(render_paper_card(results[i]), unsafe_allow_html=True)
             if st.button("⭐ Add to Collection", key=f"add_fav_{i}"):
-                add_to_favorites(results[i].get('title'), results[i].get('link'))
-                st.toast(f"Saved to Collection!")
+                if add_to_favorites(results[i]):
+                    st.toast(f"Saved to Collection!")
+                    time.sleep(0.5)
+                    st.rerun()
             
         # Card 2 (if exists)
         if i + 1 < len(results):
             with col2:
                 st.markdown(render_paper_card(results[i+1]), unsafe_allow_html=True)
                 if st.button("⭐ Add to Collection", key=f"add_fav_{i+1}"):
-                    add_to_favorites(results[i+1].get('title'), results[i+1].get('link'))
-                    st.toast(f"Saved to Collection!")
+                    if add_to_favorites(results[i+1]):
+                        st.toast(f"Saved to Collection!")
+                        time.sleep(0.5)
+                        st.rerun()
 
 def render_favorites_page():
-    st.markdown("### ⭐ Your Collection")
+    st.markdown("### ⭐ Your Research Collection")
     favs = get_favorites()
     if not favs:
         st.info("No favorites yet. Start searching and click the ⭐ to add papers!")
     else:
-        for i, f in enumerate(favs):
-            c1, c2 = st.columns([0.85, 0.15])
-            with c1:
-                st.markdown(f"**[{f['title']}]({f['link']})**")
-                st.caption(f"Added on: {f['added_at']}")
-            with c2:
-                if st.button("🗑️", key=f"del_fav_{i}", help="Remove from collection"):
-                    remove_from_favorites(f['link'])
+        st.write(f"You have **{len(favs)}** papers in your collection.")
+        # Render favorites in a grid, same as search results
+        for i in range(0, len(favs), 2):
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.markdown(render_paper_card(favs[i]), unsafe_allow_html=True)
+                st.caption(f"Added on: {favs[i].get('added_at', 'N/A')}")
+                if st.button("🗑️ Remove", key=f"del_fav_{i}", help="Remove from collection", width="stretch"):
+                    remove_from_favorites(favs[i]['link'])
                     st.rerun()
+            
+            if i + 1 < len(favs):
+                with col2:
+                    st.markdown(render_paper_card(favs[i+1]), unsafe_allow_html=True)
+                    st.caption(f"Added on: {favs[i+1].get('added_at', 'N/A')}")
+                    if st.button("🗑️ Remove", key=f"del_fav_{i+1}", help="Remove from collection", width="stretch"):
+                        remove_from_favorites(favs[i+1]['link'])
+                        st.rerun()
             st.divider()
 
 # --- History Logic ---
@@ -795,8 +858,10 @@ def render_history_page():
                     with col1:
                         st.markdown(render_paper_card(saved_results[i]), unsafe_allow_html=True)
                         if st.button("⭐ Save", key=f"hist_fav_{h['id']}_{i}"):
-                            add_to_favorites(saved_results[i].get('title'), saved_results[i].get('link'))
-                            st.toast("Saved to Collection!")
+                            if add_to_favorites(saved_results[i]):
+                                st.toast("Saved to Collection!")
+                                time.sleep(0.5)
+                                st.rerun()
                     if i + 1 < len(saved_results):
                         with col2:
                             st.markdown(render_paper_card(saved_results[i+1]), unsafe_allow_html=True)
