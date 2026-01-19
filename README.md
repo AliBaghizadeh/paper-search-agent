@@ -52,7 +52,7 @@ Finally, results are deduplicated and saved to your local `memory.db`, ensuring 
 
 ### 2. Setup the Neural Backend (n8n)
 1.  Import `Paper Search Agent.json` into n8n.
-2.  Set the workflow to **Active**.
+2.  Set the workflow to **Active** or **Publish**.
 3.  Ensure your API keys are configured in the `SerpAPI` and `Tavily` nodes.
 
 ### 3. Launching the Local Services
